@@ -1,0 +1,9 @@
+[project]
+name = "sarathi"
+version = "0.1.0"
+description = "The one thing you build across the Claude Architect certification course"
+requires-python = ">=3.10"
+dependencies = [
+    "claude-agent-sdk>=0.2.164,<0.3",
+    "anthropic>=1.12,<2",
+]
