@@ -47,7 +47,7 @@ def main() -> int:
     # 2. uv, or an active virtual environment for the pip path
     has_uv = shutil.which("uv") is not None
     in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-    results.append(("2. uv (or an active venv for pip)", has_uv or in_venv,
+    results.append(("2. uv, or a venv for pip", has_uv or in_venv,
                     "uv found" if has_uv else "venv active" if in_venv else
                     "install uv (astral.sh/uv) or activate a venv"))
 
@@ -61,9 +61,10 @@ def main() -> int:
             signed = bool(json.loads(auth).get("loggedIn"))
         except (ValueError, AttributeError):
             signed = "loggedIn" in auth and "true" in auth
-    note = (out.splitlines()[0] + (", signed in" if signed else ", not signed in: run claude, then /login")
+    ver = out.split()[0] if out else "?"
+    note = ((f"{ver}, signed in" if signed else f"{ver}, not signed in: run claude, then /login")
             if installed else "claude not found: see lesson 4 install line, then open a new terminal")
-    results.append(("3. Claude Code installed and signed in", installed and signed, note))
+    results.append(("3. Claude Code, signed in", installed and signed, note))
 
     # 4. API key
     key = bool(os.environ.get("ANTHROPIC_API_KEY"))
@@ -72,7 +73,7 @@ def main() -> int:
 
     # 5. Node
     code, out = run(["node", "--version"])
-    results.append(("5. Node.js for community MCP servers", code == 0,
+    results.append(("5. Node.js for MCP servers", code == 0,
                     out if out else "get Node from nodejs.org, install, open a new terminal"))
 
     # 6. The two packages
@@ -82,8 +83,8 @@ def main() -> int:
             importlib.import_module(mod)
         except Exception:  # noqa: BLE001
             missing.append(pkg)
-    results.append(("6. claude-agent-sdk and anthropic installed", not missing,
-                    f"claude-agent-sdk {version_of('claude-agent-sdk')}, anthropic {version_of('anthropic')}"
+    results.append(("6. claude-agent-sdk and anthropic", not missing,
+                    f"{version_of('claude-agent-sdk')} and {version_of('anthropic')}"
                     if not missing else f"missing {', '.join(missing)}: run uv sync (or the pip line)"))
 
     width = max(len(r[0]) for r in results)
