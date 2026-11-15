@@ -5,6 +5,7 @@ Offline: uv run python 01-support-agent/demo.py
 """
 import json
 import os
+import re
 import sys
 
 import hooks
@@ -18,6 +19,7 @@ SYSTEM = (
     "Verify the customer with get_customer before any refund. "
     "Refunds over 500 dollars go to a human."
 )
+EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[a-z]+", re.I)
 PRE = [hooks.refund_gate]
 POST = [hooks.remember_verified, hooks.normalize]
 
@@ -46,14 +48,26 @@ def text_of(response):
                    if b.type == "text")
 
 
+def first_choice(question):
+    """Lesson 20: with an email in the message, force get_customer
+    on turn 1. Every later turn is auto. (Haiku 5.5 accepts a
+    forced tool; Sonnet, Opus and Fable 5.x answer 400.)"""
+    if EMAIL.search(question):
+        return {"type": "tool", "name": "get_customer"}
+    return {"type": "auto"}
+
+
 def run_agent(client, question):
     hooks.reset()
     messages = [{"role": "user", "content": question}]
     tokens_in = tokens_out = 0
     for turn in range(1, MAX_TURNS + 1):
+        choice = (first_choice(question) if turn == 1
+                  else {"type": "auto"})
         response = client.messages.create(
             model=MODEL, max_tokens=1024, system=SYSTEM,
-            tools=tools.TOOLS, messages=messages)
+            tools=tools.TOOLS, tool_choice=choice,
+            messages=messages)
         tokens_in += response.usage.input_tokens
         tokens_out += response.usage.output_tokens
         print(f"turn {turn}: stop_reason = {response.stop_reason}")

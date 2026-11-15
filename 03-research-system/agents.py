@@ -7,12 +7,38 @@ the same files and nothing goes to the web.
 """
 import pathlib
 
-from claude_agent_sdk import AgentDefinition, ClaudeAgentOptions
+from claude_agent_sdk import (AgentDefinition, ClaudeAgentOptions,
+                              HookMatcher)
+
+import verify
 
 HERE = pathlib.Path(__file__).parent
 MODEL = "haiku"  # Claude Haiku 5.5, as in lesson 7
 SPAWN_TOOLS = {"Agent", "Task"}  # Task is the guide's name
-TOOLS = ["Agent", "Read", "Glob", "Grep"]
+RESEARCHERS = ("customer-researcher", "numbers-researcher")
+WRITER = "synthesis-writer"
+READING = ["Read", "Glob", "Grep"]
+# A subagent can only use a tool that exists in the session, so
+# the session holds the subagents' tools as well. Each
+# AgentDefinition below scopes one subagent.
+TOOLS = ["Agent"] + READING + [verify.TOOL_NAME]
+
+
+async def coordinator_reads_nothing(input_data, tool_use_id,
+                                    context):
+    """Lesson 20: v1's prompt said 'you never read files', and
+    it could still read. This PreToolUse hook makes it so. A
+    call from a subagent carries an agent_id; the
+    coordinator's own calls do not."""
+    if input_data.get("agent_id"):
+        return {}
+    if input_data.get("tool_name") not in READING:
+        return {}
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "The coordinator does not "
+        "read files. Give the reading to a researcher."}}
 
 FINDINGS = (
     "Reply with only a JSON list, no other text. Each item is "
@@ -34,6 +60,20 @@ AGENTS = {
         prompt="You research the store's numbers. Read only the "
                "folder named in your brief. " + FINDINGS,
         tools=["Read", "Glob", "Grep"],
+        model="haiku"),
+    WRITER: AgentDefinition(
+        description="Writes the final answer from the findings "
+                    "it is handed, and checks a number, date or "
+                    "name with verify_fact before repeating it.",
+        prompt="You write the answer to a research question from "
+               "the findings in your brief, and nothing else. "
+               "Check every number with verify_fact against its "
+               "source before you use it. Drop a finding that "
+               "verify_fact does not support. Answer in five "
+               "sentences or fewer, with the source file after "
+               "every claim, and say what the evidence does not "
+               "cover.",
+        tools=[verify.TOOL_NAME],  # one scoped cross-role tool
         model="haiku"),
 }
 
@@ -57,9 +97,8 @@ def coordinator_prompt(mode):
         "false on every call, because you need the replies "
         "before you answer. " + SPAWN[mode] + " If a "
         "subagent returns no findings, brief it once more. Then "
-        "answer the question in five sentences or fewer, with "
-        "the source file after every claim, and say what the "
-        "evidence does not cover.")
+        "give the question and every finding, word for word, to "
+        "synthesis-writer, and reply with its answer as it is.")
 
 
 def build_options(mode="parallel"):
@@ -68,7 +107,10 @@ def build_options(mode="parallel"):
         agents=AGENTS,
         tools=TOOLS,  # what exists in this session at all
         allowed_tools=TOOLS,  # what runs without asking
+        hooks={"PreToolUse": [HookMatcher(
+            hooks=[coordinator_reads_nothing])]},
         model=MODEL,
+        mcp_servers={"research": verify.SERVER},
         cwd=str(HERE),
         setting_sources=[],  # ignore your own settings and plugins
         max_turns=12,  # a fuse, not the switch

@@ -10,6 +10,7 @@ from claude_agent_sdk import ToolUseBlock
 import agents
 import findings
 import replay
+import verify
 from agents import HERE, build_options
 from coordinator import run
 
@@ -20,22 +21,36 @@ def replayed(script, mode="parallel"):
 
 
 class Options(unittest.TestCase):
-    def test_two_subagents_each_with_read_only_tools(self):
+    def test_two_researchers_with_read_only_tools(self):
         options = build_options()
         self.assertEqual(set(options.agents),
                          {"customer-researcher",
-                          "numbers-researcher"})
-        for definition in options.agents.values():
+                          "numbers-researcher",
+                          "synthesis-writer"})
+        for name in agents.RESEARCHERS:
+            definition = options.agents[name]
             self.assertEqual(definition.tools,
                              ["Read", "Glob", "Grep"])
             self.assertIn("claim", definition.prompt)
             self.assertIn("source", definition.prompt)
 
-    def test_the_coordinator_has_the_spawn_tool(self):
-        options = build_options()
-        self.assertIn("Agent", options.tools)
-        self.assertIn("Agent", options.allowed_tools)
-        self.assertNotIn("Bash", options.tools)
+    def test_the_writer_holds_only_verify_fact(self):
+        writer = build_options().agents["synthesis-writer"]
+        self.assertEqual(writer.tools,
+                         ["mcp__research__verify_fact"])
+        self.assertIn("research", build_options().mcp_servers)
+
+    def test_the_coordinator_cannot_read(self):
+        def call(tool, **extra):
+            return asyncio.run(agents.coordinator_reads_nothing(
+                {"tool_name": tool, **extra}, "t1", None))
+        denied = call("Read")["hookSpecificOutput"]
+        self.assertEqual(denied["permissionDecision"], "deny")
+        self.assertEqual(call("Agent"), {})
+        self.assertEqual(call("Read", agent_id="a1"), {})
+
+    def test_no_bash_anywhere(self):
+        self.assertNotIn("Bash", build_options().tools)
 
     def test_your_own_settings_are_not_loaded(self):
         self.assertEqual(build_options().setting_sources, [])
@@ -110,6 +125,66 @@ class Coordinator(unittest.TestCase):
         result, _ = replayed(script)
         self.assertEqual(result["kept"], [])
         self.assertIn("no JSON list", result["dropped"][0]["why"])
+
+
+class Writer(unittest.TestCase):
+    def test_the_writer_answer_and_its_checks_are_kept(self):
+        check = ToolUseBlock(id="v1", name=verify.TOOL_NAME,
+                             input={"fact": "11 dollars",
+                                    "source": "sources/numbers/"
+                                    "return-costs-2026.md"})
+        script = [
+            replay.coordinator_says("r1", ToolUseBlock(
+                id="w1", name="Agent",
+                input={"subagent_type": "synthesis-writer",
+                       "prompt": "Write the answer."})),
+            replay.AssistantMessage(
+                content=[check], model="claude-haiku-5-5",
+                parent_tool_use_id="w1", message_id="sub-w1"),
+            replay.UserMessage(content=[replay.ToolResultBlock(
+                tool_use_id="v1",
+                content=[{"type": "text",
+                          "text": '{"supported": true}'}])]),
+            replay.UserMessage(content=[replay.ToolResultBlock(
+                tool_use_id="w1",
+                content=[{"type": "text", "text": "The answer."}])]),
+        ]
+        result, _ = replayed(script)
+        self.assertEqual(result["dropped"], [])
+        self.assertEqual(result["answer"], "The answer.")
+        self.assertEqual(result["checks"][0]["fact"], "11 dollars")
+        self.assertIn("true", result["checks"][0]["result"])
+
+
+class VerifyFact(unittest.TestCase):
+    def test_a_fact_in_its_source_is_supported(self):
+        out = verify.check("11 dollars",
+                           "sources/numbers/return-costs-2026.md")
+        self.assertTrue(out["supported"])
+        self.assertEqual(out["line"], 5)
+
+    def test_a_fact_not_in_the_file_is_not_an_error(self):
+        out = verify.check("14 dollars",
+                           "sources/numbers/return-costs-2026.md")
+        self.assertEqual(out, {"supported": False, "source":
+                               "sources/numbers/return-costs-2026.md"})
+
+    def test_outside_the_sources_is_a_permission_error(self):
+        with self.assertRaises(verify.Failure) as caught:
+            verify.check("Sarathi", "../README.md")
+        self.assertEqual(caught.exception.error["errorCategory"],
+                         "permission")
+
+    def test_a_missing_file_is_a_validation_error(self):
+        with self.assertRaises(verify.Failure) as caught:
+            verify.check("11", "sources/numbers/nope.md")
+        self.assertEqual(caught.exception.error["errorCategory"],
+                         "validation")
+
+    def test_the_tool_returns_is_error_true(self):
+        out = asyncio.run(verify.verify_fact.handler(
+            {"fact": "x", "source": "../README.md"}))
+        self.assertTrue(out["is_error"])
 
 
 class Findings(unittest.TestCase):

@@ -22,7 +22,7 @@ The folders are empty on purpose. Each one fills in the lesson that builds it.
 You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/) (or pip with a
 virtual environment), [Claude Code](https://code.claude.com/docs/en/setup),
 an `ANTHROPIC_API_KEY` from [platform.claude.com](https://platform.claude.com)
-and Node.js (for the community MCP servers in lesson 18).
+and Node.js (many community MCP servers run on it).
 
 ```bash
 git clone https://github.com/genaiunplugged14/sarathi.git
@@ -46,6 +46,27 @@ to run for any line that fails. It never prints your key.
 The two packages are pinned on purpose. The Agent SDK was renamed once already
 (Claude Code SDK to Claude Agent SDK) and every sample written before the
 rename broke. A loose version gives you no warning.
+
+## Sarathi v2: the MCP server (lesson 20)
+
+`.mcp.json` in this folder starts `01-support-agent/mcp_server.py` for Claude
+Code (project scope, lesson 18). Open Claude Code here and it asks once to
+trust the project server. The store key is fake: any value lets refunds run.
+
+```bash
+export SARATHI_STORE_KEY=any-value      # Windows: set SARATHI_STORE_KEY=any-value
+export SARATHI_FLAKY_ORDERS=1           # optional: first lookup times out
+claude
+```
+
+Without a key the server still starts, and a refund comes back as a permission
+error, which is the point. Tests for every module so far, with no key and no bill:
+
+```bash
+uv run python -m unittest discover -s 01-support-agent
+uv run python -m unittest discover -s 03-research-system
+uv run python -m unittest discover -s 04-dev-productivity -t 04-dev-productivity
+```
 
 ## Checkpoints
 

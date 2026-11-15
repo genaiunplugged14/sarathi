@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sarathi": {
+      "command": "uv",
+      "args": ["run", "python", "01-support-agent/mcp_server.py"],
+      "env": {
+        "SARATHI_STORE_KEY": "${SARATHI_STORE_KEY:-}"
+      }
+    }
+  }
+}

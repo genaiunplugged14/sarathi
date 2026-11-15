@@ -17,7 +17,8 @@ from claude_agent_sdk import (AssistantMessage, ResultMessage,
                               UserMessage, query)
 
 import findings
-from agents import HERE, SPAWN_TOOLS, build_options
+import verify
+from agents import HERE, SPAWN_TOOLS, WRITER, build_options
 
 QUESTION = ("Should our store move from a 30 day to a 60 day "
             "return window? Find the evidence for and against.")
@@ -41,11 +42,16 @@ async def run(question=QUESTION, mode="parallel", query_fn=query):
     prompts = {}  # subagent name -> the brief it was given
     sent = {}     # spawn call id -> seconds after the start
     returned = {}  # spawn call id -> seconds after the start
-    found, result = [], None
+    found, result, written = [], None, ""
+    checks = {}   # verify_fact call id -> its input and result
     async for msg in query_fn(prompt=question,
                               options=build_options(mode)):
         if isinstance(msg, AssistantMessage):
             if msg.parent_tool_use_id:
+                for block in msg.content:  # lesson 20
+                    if (isinstance(block, ToolUseBlock)
+                            and block.name == verify.TOOL_NAME):
+                        checks[block.id] = dict(block.input)
                 continue  # a subagent talking, not the coordinator
             for block in msg.content:
                 if (isinstance(block, ToolUseBlock)
@@ -61,8 +67,16 @@ async def run(question=QUESTION, mode="parallel", query_fn=query):
                 msg.content, list):
             for block in msg.content:
                 if (isinstance(block, ToolResultBlock)
+                        and block.tool_use_id in checks):
+                    checks[block.tool_use_id]["result"] = (
+                        "error" if block.is_error
+                        else text_of(block.content))
+                if (isinstance(block, ToolResultBlock)
                         and block.tool_use_id in briefs):
                     agent = briefs[block.tool_use_id]
+                    if agent == WRITER:  # the answer, not findings
+                        written = text_of(block.content)
+                        continue
                     returned[block.tool_use_id] = clock(started)
                     items = findings.parse(
                         text_of(block.content), agent)
@@ -70,7 +84,8 @@ async def run(question=QUESTION, mode="parallel", query_fn=query):
         elif isinstance(msg, ResultMessage):
             result = msg
     kept, dropped = findings.aggregate(found, HERE)
-    research = (max(returned.values()) - min(sent.values())
+    research = (max(returned.values())
+                - min(sent[i] for i in returned)
                 if returned else 0.0)
     return {
         "mode": mode,
@@ -82,7 +97,9 @@ async def run(question=QUESTION, mode="parallel", query_fn=query):
         "briefs": prompts,
         "kept": kept,
         "dropped": dropped,
-        "answer": result.result if result else "",
+        "answer": result.result if result else written,
+        "written_by_synthesis": bool(written),
+        "checks": list(checks.values()),
         "cost": result.total_cost_usd if result else None,
     }
 
@@ -98,6 +115,13 @@ def show(run_):
     print(f"research phase, first spawn to last reply: "
           f"{run_['research_seconds']} s")
     print(findings.report(run_["kept"], run_["dropped"]))
+    for check in run_["checks"]:
+        result = check.get("result", "")
+        verdict = ("error" if result == "error" else
+                   "supported" if '"supported": true' in result
+                   else "not supported")
+        print(f"verify_fact {check.get('fact')!r} in "
+              f"{check.get('source')}: {verdict}")
     print(f"answer: {run_['answer']}")
     cost = run_["cost"]
     if cost is not None:
