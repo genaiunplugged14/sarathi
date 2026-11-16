@@ -105,24 +105,29 @@ async def run(question=QUESTION, mode="parallel", query_fn=query):
 
 
 def show(run_):
+    """Briefs, findings and the answer first; the numbers last,
+    so they are what stays on screen when the run ends."""
     print(f"== {run_['mode']}")
     for agent, brief in run_["briefs"].items():
         print(f"brief to {agent}: {brief[:150]}...")
+    print(findings.report(run_["kept"], run_["dropped"]))
+    print(f"answer: {run_['answer']}")
+    print()
     print(f"spawn calls per coordinator reply: "
           f"{run_['spawns_per_reply']}")
     print(f"subagent replies came back at (s): "
           f"{run_['returned_at']}")
     print(f"research phase, first spawn to last reply: "
           f"{run_['research_seconds']} s")
-    print(findings.report(run_["kept"], run_["dropped"]))
-    for check in run_["checks"]:
+    print(f"findings kept: {len(run_['kept'])}, "
+          f"dropped: {len(run_['dropped'])}")
+    for check in run_["checks"]:  # lesson 20
         result = check.get("result", "")
         verdict = ("error" if result == "error" else
                    "supported" if '"supported": true' in result
                    else "not supported")
         print(f"verify_fact {check.get('fact')!r} in "
               f"{check.get('source')}: {verdict}")
-    print(f"answer: {run_['answer']}")
     cost = run_["cost"]
     if cost is not None:
         print(f"cost: about {cost:.4f} dollars (as reported)")
