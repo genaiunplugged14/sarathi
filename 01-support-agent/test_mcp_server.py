@@ -73,6 +73,7 @@ class Errors(Base):
             self.assertEqual(e["errorCategory"], "transient")
             self.assertTrue(e["isRetryable"])
             self.assertTrue(s.lookup_order("O-5001")["found"])
+            self.assertFalse(s.lookup_order("O-9999")["found"])
 
     def test_no_store_key_is_a_permission_error(self):
         with mock.patch.dict(os.environ, {}, clear=True):

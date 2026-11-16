@@ -9,8 +9,8 @@ and every failure is a structured error (lesson 16).
 Fake data only (tools.py). No real money moves.
 Switches, all optional:
   SARATHI_STORE_KEY=any-value   lets process_refund run
-  SARATHI_FLAKY_ORDERS=1        first lookup of each order
-                                times out, the retry works
+  SARATHI_FLAKY_ORDERS=1        the first lookup times out,
+                                every lookup after it works
 """
 import functools
 import json
@@ -28,7 +28,7 @@ STATUS = {1: "placed", 2: "shipped", 3: "delivered",
           4: "returned"}
 
 verified = set()  # customer ids get_customer has verified
-lookups = {}      # order id -> lookups so far (flaky mode)
+lookups = []      # every lookup so far (for flaky mode)
 
 server = MCPServer("sarathi")
 
@@ -115,8 +115,8 @@ def lookup_order(order_id: str) -> dict:
              f"'{order_id}' is not an order id. Order ids look "
              "like O-5001.")
     if os.environ.get("SARATHI_FLAKY_ORDERS") == "1":
-        lookups[order_id] = lookups.get(order_id, 0) + 1
-        if lookups[order_id] == 1:
+        lookups.append(order_id)
+        if len(lookups) == 1:
             fail("transient", "The order system did not answer "
                  "in 5 seconds. Try again.", retryable=True)
     order = tools.ORDERS.get(order_id)

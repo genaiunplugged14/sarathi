@@ -55,7 +55,7 @@ trust the project server. The store key is fake: any value lets refunds run.
 
 ```bash
 export SARATHI_STORE_KEY=any-value      # Windows: set SARATHI_STORE_KEY=any-value
-export SARATHI_FLAKY_ORDERS=1           # optional: first lookup times out
+export SARATHI_FLAKY_ORDERS=1           # optional: the first lookup times out
 claude
 ```
 
