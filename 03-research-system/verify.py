@@ -7,6 +7,7 @@ through the coordinator. Failures are structured (lesson 16).
 """
 import json
 import pathlib
+import re
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
@@ -18,7 +19,10 @@ DESCRIPTION = (
     "and the source path a finding gave, like "
     "sources/numbers/return-costs-2026.md. Use it while "
     "writing, for example to check '11 dollars' before you "
-    "repeat it. Never use it to search for new evidence. "
+    "repeat it. A fact with numbers is supported when one "
+    "line holds all its numbers; one without, when one line "
+    "holds all its longer words. Never use it to search for "
+    "new evidence. "
     "Returns supported true with the line, or supported false "
     "when the file does not contain the fact, which is not an "
     "error.")
@@ -43,9 +47,18 @@ def check(fact, source):
     if not path.is_file():
         raise Failure("validation", f"There is no file {source}. "
                       "Use the path the finding gave.")
+    numbers = re.findall(r"\d+(?:\.\d+)?", fact)
+    words = [w for w in re.findall(r"[a-z]+", fact.lower())
+             if len(w) > 3]
     lines = path.read_text().splitlines()
     for number, line in enumerate(lines, start=1):
-        if fact.lower() in line.lower():
+        if numbers:
+            found = set(re.findall(r"\d+(?:\.\d+)?", line))
+            hit = all(n in found for n in numbers)
+        else:
+            hit = bool(words) and all(w in line.lower()
+                                      for w in words)
+        if hit:
             return {"supported": True, "source": source,
                     "line": number, "text": line.strip()}
     return {"supported": False, "source": source}

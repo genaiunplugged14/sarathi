@@ -163,6 +163,16 @@ class VerifyFact(unittest.TestCase):
         self.assertTrue(out["supported"])
         self.assertEqual(out["line"], 5)
 
+    def test_the_writer_own_words_still_match_on_numbers(self):
+        out = verify.check("11 dollars return",
+                           "sources/numbers/return-costs-2026.md")
+        self.assertTrue(out["supported"])
+
+    def test_a_name_matches_on_its_words(self):
+        out = verify.check("finance team",
+                           "sources/numbers/return-costs-2026.md")
+        self.assertTrue(out["supported"])
+
     def test_a_fact_not_in_the_file_is_not_an_error(self):
         out = verify.check("14 dollars",
                            "sources/numbers/return-costs-2026.md")
